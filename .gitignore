@@ -1,0 +1,23 @@
+# Compilación
+backend/build/
+*.o
+*.out
+mia_server
+
+# Node/Angular
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+
+# Archivos generados por el programa
+discos/*.mia
+reportes/*.*
+!reportes/.gitkeep
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+*.swp

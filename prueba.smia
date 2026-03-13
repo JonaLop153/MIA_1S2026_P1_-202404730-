@@ -1,0 +1,29 @@
+# ======================================
+# Script de Prueba - Proyecto 1 MIA
+# Carnet: 202404730
+# ======================================
+
+# 1. Crear disco de 20MB
+mkdisk -size=20 -unit=M -path=/home/jona/Proyecto1_MIA/discos/disco1.mia
+
+# 2. Crear partición primaria de 10MB
+fdisk -size=10 -unit=M -path=/home/jona/Proyecto1_MIA/discos/disco1.mia -name=Particion1
+
+# 3. Crear partición extendida de 5MB
+fdisk -size=5 -unit=M -type=E -path=/home/jona/Proyecto1_MIA/discos/disco1.mia -name=Extendida1
+
+# 4. Montar partición primaria (ID: 301A)
+mount -path=/home/jona/Proyecto1_MIA/discos/disco1.mia -name=Particion1
+
+# 5. Formatear con EXT2
+mkfs -id=301A
+
+# 6. Generar reporte MBR
+rep -name=mbr -path=/home/jona/Proyecto1_MIA/reportes -id=301A
+
+# 7. Generar reporte DISK
+rep -name=disk -path=/home/jona/Proyecto1_MIA/reportes -id=301A
+
+# ======================================
+# Fin del Script
+# ======================================

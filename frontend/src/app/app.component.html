@@ -1,0 +1,16 @@
+<div class="container">
+  <h1>🖥️ {{ title }} - Sistema de Archivos EXT2</h1>
+  
+  <div class="controls">
+    <input type="file" id="fileInput" (change)="onFileSelected($event)" 
+           accept=".smia" style="display: none;" />
+    <button (click)="cargarScript()">📂 Cargar Script</button>
+    <button (click)="ejecutarComandos()">▶️ Ejecutar</button>
+  </div>
+  
+  <textarea id="inputComandos" placeholder="Escribe comandos aquí o carga un script .smia..." 
+            rows="10"></textarea>
+  
+  <textarea id="outputComandos" [value]="salida" placeholder="Salida del backend..." 
+            rows="15" readonly></textarea>
+</div>
