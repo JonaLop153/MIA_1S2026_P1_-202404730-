@@ -7,24 +7,26 @@
 #include <cstring>
 #include <ctime>
 #include <random>
+#include <algorithm>
+#include <vector>
 
 namespace fs = std::filesystem;
 
-// Parsear parámetros: "mkdisk -size=10 -unit=M -path=/home/disco.mia"
 map<string, string> MKDisk::parsearParametros(const string& comando) {
     map<string, string> params;
     istringstream iss(comando);
     string token;
     
-    // Ignorar el nombre del comando
-    iss >> token;
+    iss >> token;  // Ignorar "mkdisk"
     
-    // Parsear cada parámetro -clave=valor
+    // ✅ Parámetros válidos para MKDISK
+    vector<string> validos = {"size", "fit", "unit", "path"};
+    
     while (iss >> token) {
         if (token[0] == '-') {
             size_t eqPos = token.find('=');
             if (eqPos != string::npos) {
-                string key = token.substr(1, eqPos - 1);  // Sin el '-'
+                string key = token.substr(1, eqPos - 1);
                 string value = token.substr(eqPos + 1);
                 
                 // Remover comillas si existen
@@ -32,8 +34,13 @@ map<string, string> MKDisk::parsearParametros(const string& comando) {
                     value = value.substr(1, value.length() - 2);
                 }
                 
-                // Convertir key a minúsculas para comparación case-insensitive
+                // Convertir key a minúsculas
                 for (char& c : key) c = tolower(c);
+                
+                // ✅ Validar que el parámetro sea reconocido
+                if (find(validos.begin(), validos.end(), key) == validos.end()) {
+                    params["__error_param__"] = key;
+                }
                 
                 params[key] = value;
             }
@@ -42,9 +49,13 @@ map<string, string> MKDisk::parsearParametros(const string& comando) {
     return params;
 }
 
-// Validar parámetros obligatorios y valores permitidos
 bool MKDisk::validarParametros(const map<string, string>& params, string& error) {
-    // Verificar parámetros obligatorios
+    // ✅ Verificar parámetro no reconocido
+    if (params.count("__error_param__")) {
+        error = "Error: Parámetro no reconocido: -" + params.at("__error_param__");
+        return false;
+    }
+    
     if (params.find("size") == params.end()) {
         error = "Error: El parámetro -size es obligatorio";
         return false;
@@ -56,7 +67,7 @@ bool MKDisk::validarParametros(const map<string, string>& params, string& error)
     
     // Validar size > 0
     try {
-        long long size = stoll(params.at("size"));
+        int size = stoi(params.at("size"));
         if (size <= 0) {
             error = "Error: El tamaño debe ser mayor a cero";
             return false;
@@ -66,19 +77,9 @@ bool MKDisk::validarParametros(const map<string, string>& params, string& error)
         return false;
     }
     
-    // Validar unit (si existe)
-    if (params.count("unit")) {
-        char unit = toupper(params.at("unit")[0]);
-        if (unit != 'K' && unit != 'M') {
-            error = "Error: El parámetro -unit solo acepta K o M";
-            return false;
-        }
-    }
-    
-    // Validar fit (si existe)
+    // Validar fit
     if (params.count("fit")) {
         string fit = params.at("fit");
-        // Convertir a mayúsculas para comparar
         for (char& c : fit) c = toupper(c);
         if (fit != "BF" && fit != "FF" && fit != "WF") {
             error = "Error: El parámetro -fit solo acepta BF, FF o WF";
@@ -86,134 +87,111 @@ bool MKDisk::validarParametros(const map<string, string>& params, string& error)
         }
     }
     
+    // Validar unit
+    if (params.count("unit")) {
+        string unit = params.at("unit");
+        for (char& c : unit) c = toupper(c);
+        if (unit != "K" && unit != "M") {
+            error = "Error: El parámetro -unit solo acepta K o M";
+            return false;
+        }
+    }
+    
     return true;
 }
 
-// Calcular tamaño en bytes: K=1024, M=1024*1024, B=1
-long long MKDisk::calcularTamañoBytes(long long size, char unit) {
-    switch (toupper(unit)) {
-        case 'K': return size * 1024;
-        case 'M': return size * 1024 * 1024;
-        case 'B': return size;
-        default: return size * 1024 * 1024;  // Default: Megabytes
-    }
-}
-
-// Crear archivo binario lleno de ceros
-bool MKDisk::crearArchivoBinario(const string& path, long long tamaño) {
-    // Crear directorios padres si no existen
-    fs::path p(path);
-    if (p.has_parent_path()) {
-        fs::create_directories(p.parent_path());
-    }
-    
-    ofstream file(path, ios::binary | ios::out);
-    if (!file.is_open()) {
-        return false;
-    }
-    
-    // Usar buffer de 1024 bytes para escribir más rápido
-    const int BUFFER_SIZE = 1024;
-    char buffer[BUFFER_SIZE] = {0};  // Inicializado en ceros
-    
-    long long restantes = tamaño;
-    while (restantes > 0) {
-        int escribir = (restantes >= BUFFER_SIZE) ? BUFFER_SIZE : restantes;
-        file.write(buffer, escribir);
-        restantes -= escribir;
-    }
-    
-    file.close();
-    return true;
-}
-
-// Escribir la estructura MBR al inicio del archivo
-bool MKDisk::escribirMBR(const string& path, const map<string, string>& params) {
-    // ✅ Usar fstream en lugar de ifstream para poder escribir
-    fstream file(path, ios::binary | ios::in | ios::out);
-    if (!file.is_open()) {
-        return false;
-    }
-    
-    // Preparar estructura MBR
-    MBR mbr;
-    memset(&mbr, 0, sizeof(MBR));  // Inicializar en ceros
-    
-    // Calcular tamaño total del disco en bytes
-    long long size = stoll(params.at("size"));
-    char unit = params.count("unit") ? toupper(params.at("unit")[0]) : 'M';
-    mbr.mbr_tamano = static_cast<int32_t>(calcularTamañoBytes(size, unit));
-    
-    // Fecha de creación
-    mbr.mbr_fecha_creacion = time(nullptr);
-    
-    // Signature aleatoria única
-    random_device rd;
-    mt19937 gen(rd());
-    uniform_int_distribution<> dis(10000, 99999);
-    mbr.mbr_dsk_signature = dis(gen);
-    
-    // Ajuste del disco (default: FF)
-    string fit = params.count("fit") ? params.at("fit") : "FF";
-    for (char& c : fit) c = toupper(c);
-    mbr.dsk_fit = fit[0];  // 'B', 'F' o 'W'
-    
-    // Inicializar las 4 particiones en ceros/desactivadas
-    for (int i = 0; i < 4; i++) {
-        mbr.mbr_partitions[i].part_status = '0';  // Desmontada
-        mbr.mbr_partitions[i].part_type = '\0';
-        mbr.mbr_partitions[i].part_fit = '\0';
-        mbr.mbr_partitions[i].part_start = -1;
-        mbr.mbr_partitions[i].part_size = 0;
-        memset(mbr.mbr_partitions[i].part_name, 0, 16);
-        mbr.mbr_partitions[i].part_correlative = -1;
-        memset(mbr.mbr_partitions[i].part_id, 0, 4);
-    }
-    
-    // ✅ Escribir MBR al inicio del archivo (byte 0)
-    file.seekp(0, ios::beg);  // ✅ seekp funciona con fstream
-    file.write(reinterpret_cast<const char*>(&mbr), sizeof(MBR));  // ✅ write funciona con fstream
-    
-    file.close();
-    return true;
-}
-
-// Función principal que ejecuta el comando
 string MKDisk::ejecutar(const string& comando) {
-    // 1. Parsear parámetros
     map<string, string> params = parsearParametros(comando);
     
-    // 2. Validar parámetros
     string error;
     if (!validarParametros(params, error)) {
         return error;
     }
     
-    // 3. Obtener valores
-    long long size = stoll(params["size"]);
-    char unit = params.count("unit") ? toupper(params["unit"][0]) : 'M';
-    string path = params["path"];
+    int size = stoi(params["size"]);
+    string unit = params.count("unit") ? params["unit"] : "M";
     string fit = params.count("fit") ? params["fit"] : "FF";
+    string path = params["path"];
+    
+    // Convertir a mayúsculas
+    for (char& c : unit) c = toupper(c);
     for (char& c : fit) c = toupper(c);
     
-    // 4. Calcular tamaño en bytes
-    long long tamañoBytes = calcularTamañoBytes(size, unit);
+    // Calcular tamaño en bytes
+    int sizeBytes = size;
+    if (unit == "K") sizeBytes *= 1024;
+    else if (unit == "M") sizeBytes *= 1024 * 1024;
     
-    // 5. Crear archivo binario con ceros
-    if (!crearArchivoBinario(path, tamañoBytes)) {
-        return "Error: No se pudo crear el archivo en: " + path;
+    // Crear directorio padre si no existe
+    fs::path fsPath(path);
+    if (fsPath.has_parent_path()) {
+        fs::create_directories(fsPath.parent_path());
     }
     
-    // 6. Escribir MBR al inicio
-    if (!escribirMBR(path, params)) {
-        return "Error: No se pudo escribir el MBR en: " + path;
+    // ✅ Crear archivo binario lleno de ceros
+    ofstream file(path, ios::binary | ios::out);
+    if (!file.is_open()) {
+        return "Error: No se pudo crear el disco en: " + path;
     }
     
-    // 7. Éxito
+    // Usar buffer de 1024 bytes para eficiencia (según enunciado)
+    const int BUFFER_SIZE = 1024;
+    char* buffer = new char[BUFFER_SIZE]();  // Inicializado en 0
+    
+    int remaining = sizeBytes;
+    while (remaining > 0) {
+        int toWrite = min(BUFFER_SIZE, remaining);
+        file.write(buffer, toWrite);
+        remaining -= toWrite;
+    }
+    
+    delete[] buffer;
+    file.close();
+    
+    // ✅ ESCRIBIR MBR AL INICIO DEL DISCO (primer sector)
+    fstream mbrFile(path, ios::binary | ios::in | ios::out);
+    if (!mbrFile.is_open()) {
+        return "Error: No se pudo abrir el disco para escribir MBR";
+    }
+    
+    // ✅ Crear estructura MBR según enunciado
+    MBR mbr;
+    memset(&mbr, 0, sizeof(MBR));  // Limpiar toda la estructura
+    
+    // Campos del MBR según PDF (página 10-11)
+    mbr.mbr_tamano = sizeBytes;              // Tamaño total del disco en bytes
+    mbr.mbr_fecha_creacion = time(nullptr);  // Fecha y hora de creación
+    
+    // Generar signature random (número único para cada disco)
+    random_device rd;
+    mt19937 gen(rd());
+    uniform_int_distribution<> dis(1000, 99999);
+    mbr.mbr_dsk_signature = dis(gen);
+    
+    mbr.dsk_fit = fit[0];  // Tipo de ajuste (B, F, W)
+    
+    // ✅ Inicializar las 4 particiones del MBR
+    for (int i = 0; i < 4; i++) {
+        mbr.mbr_partitions[i].part_status = '0';      // '0' = no montada, '1' = montada
+        mbr.mbr_partitions[i].part_type = '\0';       // '\0' = vacía, 'P' = primaria, 'E' = extendida
+        mbr.mbr_partitions[i].part_fit = '\0';        // Ajuste de partición
+        mbr.mbr_partitions[i].part_start = -1;        // Byte de inicio (-1 = no asignado)
+        mbr.mbr_partitions[i].part_size = -1;         // Tamaño en bytes (-1 = no asignado)
+        memset(mbr.mbr_partitions[i].part_name, 0, 16);  // Nombre vacío
+        mbr.mbr_partitions[i].part_correlative = -1;  // -1 hasta que sea montada
+        memset(mbr.mbr_partitions[i].part_id, 0, 4);  // ID vacío hasta mount
+    }
+    
+    // ✅ Escribir MBR en el primer sector del disco (byte 0)
+    mbrFile.seekp(0, ios::beg);
+    mbrFile.write(reinterpret_cast<const char*>(&mbr), sizeof(MBR));
+    mbrFile.close();
+    
+    // ✅ Respuesta exitosa
     ostringstream oss;
     oss << "Disco creado exitosamente:\n";
     oss << "  Path: " << path << "\n";
-    oss << "  Tamaño: " << size << " " << unit << " (" << tamañoBytes << " bytes)\n";
+    oss << "  Tamaño: " << size << " " << unit << " (" << sizeBytes << " bytes)\n";
     oss << "  Fit: " << fit << "\n";
     oss << "  MBR escrito en byte 0";
     

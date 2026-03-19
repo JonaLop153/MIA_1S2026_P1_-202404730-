@@ -1,17 +1,13 @@
-#ifndef MKDIR_H
-#define MKDIR_H
-
+#ifndef RMUSR_H
+#define RMUSR_H
 #include <string>
 #include <map>
 using namespace std;
-
-class MkDir {
+class RmUsr {
 public:
     static map<string, string> parsearParametros(const string& comando);
     static string ejecutar(const string& comando);
 private:
     static bool validarParametros(const map<string, string>& params, string& error);
-    static bool crearCarpeta(const string& id, const string& path, bool crearPadres);
 };
-
 #endif

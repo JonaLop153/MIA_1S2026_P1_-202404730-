@@ -1,0 +1,22 @@
+# Script de Archivos y Carpetas - 18 Puntos
+
+# 1. Crear disco y partición
+mkdisk -size=20 -unit=M -path=/home/jona/Proyecto1_MIA/discos/disco2.mia
+fdisk -size=10 -unit=M -path=/home/jona/Proyecto1_MIA/discos/disco2.mia -name=Particion2
+mount -path=/home/jona/Proyecto1_MIA/discos/disco2.mia -name=Particion2
+mkfs -id=301B
+
+# 2. Login
+login -user=root -pass=123 -id=301B
+
+# 3. Crear carpeta
+mkdir -path=/carpeta1 -p
+
+# 4. Crear archivo con tamaño
+mkfile -path=/archivo1.txt -size=100
+
+# 5. Crear archivo con contenido
+mkfile -path=/archivo2.txt -cont=/home/jona/test.txt
+
+# 6. Logout
+logout

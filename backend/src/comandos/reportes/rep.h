@@ -18,6 +18,14 @@ private:
     static string escapeDot(const string& texto);
     static string generarReporteMBR(const string& diskPath);
     static string generarReporteDisk(const string& diskPath);
+    static string generarReporteInode(const string& diskPath, int partStart, SuperBlock& sb);
+    static string generarReporteBlock(const string& diskPath, int partStart, SuperBlock& sb);
+    static string generarReporteBmInode(const string& diskPath, int partStart, SuperBlock& sb);
+    static string generarReporteBmBlock(const string& diskPath, int partStart, SuperBlock& sb);
+    static string generarReporteTree(const string& diskPath, int partStart, SuperBlock& sb);
+    static string generarReporteSb(const string& diskPath, int partStart);
+    static string generarReporteFile(const string& diskPath, int partStart, SuperBlock& sb, const string& filePath);
+    static string generarReporteLs(const string& diskPath, int partStart, SuperBlock& sb, const string& dirPath);
 };
 
 #endif

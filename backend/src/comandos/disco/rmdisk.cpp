@@ -50,16 +50,20 @@ string RMDisk::ejecutar(const string& comando) {
     
     string path = params["path"];
     
-    // Verificar si el archivo existe
+    // ✅ VERIFICAR QUE EL ARCHIVO EXISTE ANTES DE ELIMINAR
     if (!fs::exists(path)) {
         return "Error: El disco no existe en: " + path;
     }
     
-    // Eliminar el archivo
+    // Intentar eliminar el archivo
     try {
         fs::remove(path);
-        return "Disco eliminado exitosamente: " + path;
-    } catch (const exception& e) {
+    } catch (const fs::filesystem_error& e) {
         return "Error: No se pudo eliminar el disco: " + string(e.what());
     }
+    
+    ostringstream oss;
+    oss << "Disco eliminado exitosamente: " << path;
+    
+    return oss.str();
 }

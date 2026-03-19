@@ -3,7 +3,6 @@
 #include "../../session/session.h"
 #include <fstream>
 #include <sstream>
-#include <iostream>
 #include <filesystem>
 #include <cstring>
 #include <ctime>
@@ -24,11 +23,8 @@ map<string, string> MKFS::parsearParametros(const string& comando) {
             if (eqPos != string::npos) {
                 string key = token.substr(1, eqPos - 1);
                 string value = token.substr(eqPos + 1);
-                
-                if (!value.empty() && value.front() == '"' && value.back() == '"') {
+                if (!value.empty() && value.front() == '"' && value.back() == '"')
                     value = value.substr(1, value.length() - 2);
-                }
-                
                 for (char& c : key) c = tolower(c);
                 params[key] = value;
             }
@@ -70,9 +66,7 @@ bool MKFS::buscarParticionMontada(const string& id, string& path, int& indice) {
 
 bool MKFS::escribirSuperBlock(const string& path, int start, SuperBlock& sb) {
     fstream file(path, ios::binary | ios::in | ios::out);
-    if (!file.is_open()) {
-        return false;
-    }
+    if (!file.is_open()) return false;
     
     file.seekp(start, ios::beg);
     file.write(reinterpret_cast<const char*>(&sb), sizeof(SuperBlock));
@@ -82,21 +76,21 @@ bool MKFS::escribirSuperBlock(const string& path, int start, SuperBlock& sb) {
 
 bool MKFS::escribirBitmaps(const string& path, int start, int totalInodos, int totalBloques) {
     fstream file(path, ios::binary | ios::in | ios::out);
-    if (!file.is_open()) {
-        return false;
-    }
+    if (!file.is_open()) return false;
     
     file.seekp(start, ios::beg);
     
+    // Bitmap de inodos
     int bitmapInodosSize = (totalInodos + 7) / 8;
     char* bitmapInodos = new char[bitmapInodosSize]();
-    bitmapInodos[0] = 0b00000011;
+    bitmapInodos[0] = 0b00000011;  // Inodos 0 y 1 ocupados
     file.write(bitmapInodos, bitmapInodosSize);
     delete[] bitmapInodos;
     
+    // Bitmap de bloques
     int bitmapBloquesSize = (totalBloques + 7) / 8;
     char* bitmapBloques = new char[bitmapBloquesSize]();
-    bitmapBloques[0] = 0b00001111;
+    bitmapBloques[0] = 0b00001111;  // Bloques 0, 1, 2, 3 ocupados
     file.write(bitmapBloques, bitmapBloquesSize);
     delete[] bitmapBloques;
     
@@ -106,9 +100,7 @@ bool MKFS::escribirBitmaps(const string& path, int start, int totalInodos, int t
 
 bool MKFS::escribirInodeTable(const string& path, int start, int totalInodos) {
     fstream file(path, ios::binary | ios::in | ios::out);
-    if (!file.is_open()) {
-        return false;
-    }
+    if (!file.is_open()) return false;
     
     file.seekp(start, ios::beg);
     
@@ -123,10 +115,9 @@ bool MKFS::escribirInodeTable(const string& path, int start, int totalInodos) {
 
 bool MKFS::crearInodoRaiz(const string& path, int inodeStart, int blockStart, int blockSize) {
     fstream file(path, ios::binary | ios::in | ios::out);
-    if (!file.is_open()) {
-        return false;
-    }
+    if (!file.is_open()) return false;
     
+    // Inodo 2 = raíz (/)
     Inodo inodoRaiz;
     memset(&inodoRaiz, 0, sizeof(Inodo));
     
@@ -136,7 +127,7 @@ bool MKFS::crearInodoRaiz(const string& path, int inodeStart, int blockStart, in
     inodoRaiz.i_atime = time(nullptr);
     inodoRaiz.i_ctime = time(nullptr);
     inodoRaiz.i_mtime = time(nullptr);
-    inodoRaiz.i_type = '0';
+    inodoRaiz.i_type = '0';  // Carpeta
     inodoRaiz.i_perm[0] = '7';
     inodoRaiz.i_perm[1] = '7';
     inodoRaiz.i_perm[2] = '7';
@@ -149,6 +140,7 @@ bool MKFS::crearInodoRaiz(const string& path, int inodeStart, int blockStart, in
     file.seekp(inodeStart + (2 * sizeof(Inodo)), ios::beg);
     file.write(reinterpret_cast<const char*>(&inodoRaiz), sizeof(Inodo));
     
+    // Bloque de carpeta raíz con "." y ".."
     BloqueCarpeta bloqueRaiz;
     memset(&bloqueRaiz, 0, sizeof(BloqueCarpeta));
     
@@ -167,12 +159,13 @@ bool MKFS::crearInodoRaiz(const string& path, int inodeStart, int blockStart, in
 
 bool MKFS::crearUsersTXT(const string& path, int inodeStart, int blockStart, int blockSize, int nextFreeBlock) {
     fstream file(path, ios::binary | ios::in | ios::out);
-    if (!file.is_open()) {
-        return false;
-    }
+    if (!file.is_open()) return false;
     
+    // ✅ Contenido EXACTO de users.txt según enunciado (página 21)
+    // Debe iniciar con root group y root user
     string contenido = "1,G,root\n1,U,root,root,123\n";
     
+    // Crear inodo para users.txt (inodo 3)
     Inodo inodoUsers;
     memset(&inodoUsers, 0, sizeof(Inodo));
     
@@ -182,7 +175,7 @@ bool MKFS::crearUsersTXT(const string& path, int inodeStart, int blockStart, int
     inodoUsers.i_atime = time(nullptr);
     inodoUsers.i_ctime = time(nullptr);
     inodoUsers.i_mtime = time(nullptr);
-    inodoUsers.i_type = '1';
+    inodoUsers.i_type = '1';  // Archivo
     inodoUsers.i_perm[0] = '6';
     inodoUsers.i_perm[1] = '6';
     inodoUsers.i_perm[2] = '4';
@@ -192,12 +185,18 @@ bool MKFS::crearUsersTXT(const string& path, int inodeStart, int blockStart, int
         inodoUsers.i_block[i] = -1;
     }
     
+    // Escribir inodo 3
     file.seekp(inodeStart + (3 * sizeof(Inodo)), ios::beg);
     file.write(reinterpret_cast<const char*>(&inodoUsers), sizeof(Inodo));
     
+    // Escribir contenido en bloque
     BloqueArchivo bloqueUsers;
     memset(&bloqueUsers, 0, sizeof(BloqueArchivo));
-    strncpy(bloqueUsers.b_content, contenido.c_str(), 64);
+    
+    // ✅ Copiar contenido completo (máximo 63 bytes + null)
+    size_t copySize = min(contenido.size(), (size_t)63);
+    strncpy(bloqueUsers.b_content, contenido.c_str(), copySize);
+    bloqueUsers.b_content[copySize] = '\0';
     
     file.seekp(nextFreeBlock * blockSize, ios::beg);
     file.write(reinterpret_cast<const char*>(&bloqueUsers), sizeof(BloqueArchivo));
@@ -248,6 +247,7 @@ string MKFS::ejecutar(const string& comando) {
         return "Error: Partición inválida";
     }
     
+    // Cálculo de estructuras EXT2
     int blockSize = 64;
     int sbSize = sizeof(SuperBlock);
     int inodeSize = sizeof(Inodo);
@@ -264,6 +264,7 @@ string MKFS::ejecutar(const string& comando) {
     int inodeTableOffset = bitmapBloquesOffset + ((totalBloques + 7) / 8);
     int blockTableOffset = inodeTableOffset + (totalInodos * inodeSize);
     
+    // Crear SuperBlock
     SuperBlock sb;
     memset(&sb, 0, sizeof(SuperBlock));
     
@@ -306,14 +307,15 @@ string MKFS::ejecutar(const string& comando) {
         return "Error: No se pudo crear users.txt";
     }
     
+    // Actualizar bitmaps
     fstream fileUpdate(path, ios::binary | ios::in | ios::out);
     if (fileUpdate.is_open()) {
         fileUpdate.seekp(bitmapInodosOffset, ios::beg);
-        char bitmapInodo = 0b00001111;
+        char bitmapInodo = 0b00001111;  // Inodos 0, 1, 2, 3 ocupados
         fileUpdate.write(&bitmapInodo, 1);
         
         fileUpdate.seekp(bitmapBloquesOffset, ios::beg);
-        char bitmapBloque = 0b00001111;
+        char bitmapBloque = 0b00001111;  // Bloques 0, 1, 2, 3 ocupados
         fileUpdate.write(&bitmapBloque, 1);
         
         fileUpdate.close();

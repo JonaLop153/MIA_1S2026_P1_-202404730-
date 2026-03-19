@@ -1,0 +1,31 @@
+# Script de Usuarios - 5 Puntos Rápidos
+
+# 1. Crear disco y partición
+mkdisk -size=20 -unit=M -path=/home/jona/Proyecto1_MIA/discos/disco1.mia
+fdisk -size=10 -unit=M -path=/home/jona/Proyecto1_MIA/discos/disco1.mia -name=Particion1
+mount -path=/home/jona/Proyecto1_MIA/discos/disco1.mia -name=Particion1
+mkfs -id=301A
+
+# 2. Login con root
+login -user=root -pass=123 -id=301A
+
+# 3. Crear grupo
+mkgrp -name=usuarios
+
+# 4. Crear usuario
+mkusr -user=user1 -pass=123 -grp=usuarios
+
+# 5. Cambiar grupo
+chgrp -user=user1 -grp=root
+
+# 6. Ver users.txt (con cat o reporte file)
+# cat -file1=/home/jona/users.txt
+
+# 7. Eliminar usuario
+rmusr -user=user1
+
+# 8. Eliminar grupo
+rmgrp -name=usuarios
+
+# 9. Logout
+logout

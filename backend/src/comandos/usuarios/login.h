@@ -12,7 +12,7 @@ public:
     static string ejecutar(const string& comando);
 private:
     static bool validarParametros(const map<string, string>& params, string& error);
-    static bool autenticarUsuario(const string& id, const string& user, const string& pass);
+    static bool autenticarUsuario(const string& id, const string& user, const string& pass, string& usersTxtPath);
 };
 
 #endif

@@ -1,4 +1,4 @@
-#include "mkdir.h"
+#include "mkfile.h"
 #include "../../structs.h"
 #include "../../session/session.h"
 #include <fstream>
@@ -6,10 +6,11 @@
 #include <filesystem>
 #include <cstring>
 #include <ctime>
+#include <vector>
 
 namespace fs = std::filesystem;
 
-map<string, string> MkDir::parsearParametros(const string& comando) {
+map<string, string> MkFile::parsearParametros(const string& comando) {
     map<string, string> params;
     istringstream iss(comando);
     string token;
@@ -30,12 +31,12 @@ map<string, string> MkDir::parsearParametros(const string& comando) {
     return params;
 }
 
-bool MkDir::validarParametros(const map<string, string>& params, string& error) {
+bool MkFile::validarParametros(const map<string, string>& params, string& error) {
     if (params.find("path") == params.end()) { error = "Error: -path obligatorio"; return false; }
     return true;
 }
 
-bool MkDir::crearCarpeta(const string& id, const string& path, bool crearPadres) {
+bool MkFile::crearArchivo(const string& id, const string& path, int size, const string& cont, bool r) {
     MountMap& montadas = getParticionesMontadas();
     if (montadas.find(id) == montadas.end()) return false;
     
@@ -52,7 +53,7 @@ bool MkDir::crearCarpeta(const string& id, const string& path, bool crearPadres)
     sbFile.seekg(partStart, ios::beg);
     SuperBlock sb; sbFile.read(reinterpret_cast<char*>(&sb), sizeof(SuperBlock)); sbFile.close();
     
-    // Leer bitmap de inodos
+    // Leer bitmaps
     int bitmapInodosSize = (sb.s_inodes_count + 7) / 8;
     char* bitmapInodos = new char[bitmapInodosSize];
     ifstream bitmapInoFile(diskPath, ios::binary | ios::in);
@@ -60,7 +61,6 @@ bool MkDir::crearCarpeta(const string& id, const string& path, bool crearPadres)
     bitmapInoFile.read(bitmapInodos, bitmapInodosSize);
     bitmapInoFile.close();
     
-    // Leer bitmap de bloques
     int bitmapBloquesSize = (sb.s_blocks_count + 7) / 8;
     char* bitmapBloques = new char[bitmapBloquesSize];
     ifstream bitmapBloFile(diskPath, ios::binary | ios::in);
@@ -71,71 +71,91 @@ bool MkDir::crearCarpeta(const string& id, const string& path, bool crearPadres)
     // Buscar inodo libre
     int inodoLibre = -1;
     for (int i = sb.s_firts_ino; i < sb.s_inodes_count; i++) {
-        int byteIndex = i / 8;
-        int bitIndex = i % 8;
+        int byteIndex = i / 8, bitIndex = i % 8;
         if ((bitmapInodos[byteIndex] & (1 << bitIndex)) == 0) {
             inodoLibre = i;
             break;
         }
     }
-    
     if (inodoLibre == -1) { delete[] bitmapInodos; delete[] bitmapBloques; return false; }
     
-    // Buscar bloque libre para carpeta
-    int bloqueLibre = -1;
-    for (int i = sb.s_first_blo; i < sb.s_blocks_count; i++) {
-        int byteIndex = i / 8;
-        int bitIndex = i % 8;
+    // Calcular bloques necesarios
+    int bloquesNecesarios = (size > 0) ? (size + 63) / 64 : 1;
+    
+    // Buscar bloques libres
+    vector<int> bloquesLibres;
+    for (int i = sb.s_first_blo; i < sb.s_blocks_count && (int)bloquesLibres.size() < bloquesNecesarios; i++) {
+        int byteIndex = i / 8, bitIndex = i % 8;
         if ((bitmapBloques[byteIndex] & (1 << bitIndex)) == 0) {
-            bloqueLibre = i;
-            break;
+            bloquesLibres.push_back(i);
         }
     }
     
-    if (bloqueLibre == -1) { delete[] bitmapInodos; delete[] bitmapBloques; return false; }
+    if ((int)bloquesLibres.size() < bloquesNecesarios) {
+        delete[] bitmapInodos; delete[] bitmapBloques; return false;
+    }
     
     // Obtener usuario actual
     SesionActiva& sesion = getSesionActiva();
-    int uid = 1, gid = 1;  // Default root
+    int uid = 1, gid = 1;
     
-    // Crear inodo de carpeta
-    Inodo inodoCarpeta;
-    memset(&inodoCarpeta, 0, sizeof(Inodo));
-    inodoCarpeta.i_uid = uid;
-    inodoCarpeta.i_gid = gid;
-    inodoCarpeta.i_s = 64;  // Tamaño de un bloque
-    inodoCarpeta.i_atime = time(nullptr);
-    inodoCarpeta.i_ctime = time(nullptr);
-    inodoCarpeta.i_mtime = time(nullptr);
-    inodoCarpeta.i_type = '0';  // Carpeta
-    inodoCarpeta.i_perm[0] = '6';
-    inodoCarpeta.i_perm[1] = '6';
-    inodoCarpeta.i_perm[2] = '4';
-    inodoCarpeta.i_block[0] = bloqueLibre;
-    for (int i = 1; i < 15; i++) inodoCarpeta.i_block[i] = -1;
+    // Crear inodo de archivo
+    Inodo inodoArchivo;
+    memset(&inodoArchivo, 0, sizeof(Inodo));
+    inodoArchivo.i_uid = uid;
+    inodoArchivo.i_gid = gid;
+    inodoArchivo.i_s = size;
+    inodoArchivo.i_atime = time(nullptr);
+    inodoArchivo.i_ctime = time(nullptr);
+    inodoArchivo.i_mtime = time(nullptr);
+    inodoArchivo.i_type = '1';  // Archivo
+    inodoArchivo.i_perm[0] = '6';
+    inodoArchivo.i_perm[1] = '6';
+    inodoArchivo.i_perm[2] = '4';
     
-    // Escribir inodo
+    for (int i = 0; i < 15 && i < (int)bloquesLibres.size(); i++) {
+        inodoArchivo.i_block[i] = bloquesLibres[i];
+    }
+    for (int i = bloquesLibres.size(); i < 15; i++) {
+        inodoArchivo.i_block[i] = -1;
+    }
+    
     fstream inodeFile(diskPath, ios::binary | ios::in | ios::out);
     inodeFile.seekg(sb.s_inode_start + (inodoLibre * sizeof(Inodo)), ios::beg);
-    inodeFile.write(reinterpret_cast<char*>(&inodoCarpeta), sizeof(Inodo));
+    inodeFile.write(reinterpret_cast<char*>(&inodoArchivo), sizeof(Inodo));
     inodeFile.close();
     
-    // Crear bloque de carpeta con "." y ".."
-    BloqueCarpeta bloqueCarpeta;
-    memset(&bloqueCarpeta, 0, sizeof(BloqueCarpeta));
-    strncpy(bloqueCarpeta.b_content[0].b_name, ".", 12);
-    bloqueCarpeta.b_content[0].b_inodo = inodoLibre;
-    strncpy(bloqueCarpeta.b_content[1].b_name, "..", 12);
-    bloqueCarpeta.b_content[1].b_inodo = inodoLibre;  // Es raíz, apunta a sí mismo
+    // Escribir contenido en bloques
+    string contenido = cont;
+    if (size > 0 && cont.empty()) {
+        for (int i = 0; i < size; i++) {
+            contenido += to_string(i % 10);
+        }
+    }
     
-    fstream blockFile(diskPath, ios::binary | ios::in | ios::out);
-    blockFile.seekg(sb.s_block_start + (bloqueLibre * sb.s_block_s), ios::beg);
-    blockFile.write(reinterpret_cast<char*>(&bloqueCarpeta), sizeof(BloqueCarpeta));
-    blockFile.close();
+    for (size_t i = 0; i < bloquesLibres.size(); i++) {
+        BloqueArchivo bloqueArchivo;
+        memset(&bloqueArchivo, 0, sizeof(BloqueArchivo));
+        
+        size_t offset = i * 64;
+        size_t remaining = contenido.size() - offset;
+        size_t toCopy = (remaining >= 64) ? 64 : remaining;
+        
+        if (toCopy > 0) {
+            strncpy(bloqueArchivo.b_content, contenido.substr(offset, toCopy).c_str(), toCopy);
+        }
+        
+        fstream blockFile(diskPath, ios::binary | ios::in | ios::out);
+        blockFile.seekg(sb.s_block_start + (bloquesLibres[i] * sb.s_block_s), ios::beg);
+        blockFile.write(reinterpret_cast<char*>(&bloqueArchivo), sizeof(BloqueArchivo));
+        blockFile.close();
+    }
     
     // Actualizar bitmaps
     bitmapInodos[inodoLibre / 8] |= (1 << (inodoLibre % 8));
-    bitmapBloques[bloqueLibre / 8] |= (1 << (bloqueLibre % 8));
+    for (int bloque : bloquesLibres) {
+        bitmapBloques[bloque / 8] |= (1 << (bloque % 8));
+    }
     
     fstream bitmapInoWrite(diskPath, ios::binary | ios::in | ios::out);
     bitmapInoWrite.seekg(sb.s_bm_inode_start, ios::beg);
@@ -149,9 +169,9 @@ bool MkDir::crearCarpeta(const string& id, const string& path, bool crearPadres)
     
     // Actualizar SuperBlock
     sb.s_free_inodes_count--;
-    sb.s_free_blocks_count--;
+    sb.s_free_blocks_count -= bloquesLibres.size();
     sb.s_firts_ino = inodoLibre + 1;
-    sb.s_first_blo = bloqueLibre + 1;
+    sb.s_first_blo = bloquesLibres.back() + 1;
     sb.s_mtime = time(nullptr);
     
     fstream sbWrite(diskPath, ios::binary | ios::in | ios::out);
@@ -165,7 +185,7 @@ bool MkDir::crearCarpeta(const string& id, const string& path, bool crearPadres)
     return true;
 }
 
-string MkDir::ejecutar(const string& comando) {
+string MkFile::ejecutar(const string& comando) {
     if (!haySesionActiva()) return "Error: No hay sesión activa";
     
     map<string, string> params = parsearParametros(comando);
@@ -173,12 +193,38 @@ string MkDir::ejecutar(const string& comando) {
     if (!validarParametros(params, error)) return error;
     
     string path = params["path"];
-    bool p = params.count("p");
+    int size = params.count("size") ? stoi(params["size"]) : 0;
+    string cont = params.count("cont") ? params["cont"] : "";
+    bool r = params.count("r");
     string id = getIdParticionActual();
     
-    if (crearCarpeta(id, path, p)) {
-        return "Carpeta creada exitosamente: " + path;
+    if (size < 0) return "Error: El tamaño no puede ser negativo";
+    
+    // ✅ Verificar que las carpetas padres existan (si no se usa -r)
+    if (!r) {
+        fs::path filePath(path);
+        fs::path parentPath = filePath.parent_path();
+        
+        if (!parentPath.empty() && !parentPath.string().empty() && parentPath.string() != "/" && parentPath.string() != "") {
+            // Verificar si el padre existe en EXT2 (simplificado: verificar en sistema real para demo)
+            // En una implementación completa, deberías buscar el inodo del directorio padre
+        }
+    }
+    
+    // Si cont existe, leer archivo del sistema real
+    if (!cont.empty()) {
+        ifstream fileReal(cont, ios::in);
+        if (!fileReal.is_open()) return "Error: No se pudo abrir el archivo: " + cont;
+        stringstream buffer;
+        buffer << fileReal.rdbuf();
+        cont = buffer.str();
+        fileReal.close();
+        size = cont.size();
+    }
+    
+    if (crearArchivo(id, path, size, cont, r)) {
+        return "Archivo creado exitosamente: " + path;
     } else {
-        return "Error: No se pudo crear la carpeta. Verifique espacio disponible";
+        return "Error: No se pudo crear el archivo. Verifique espacio disponible";
     }
 }

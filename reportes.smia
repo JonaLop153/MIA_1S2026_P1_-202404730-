@@ -1,0 +1,32 @@
+# Script de Reportes - 18 Puntos
+
+# 1. Crear y montar (disco3 → ID debería ser 303A)
+mkdisk -size=20 -unit=M -path=/home/jona/Proyecto1_MIA/discos/disco3.mia
+fdisk -size=10 -unit=M -path=/home/jona/Proyecto1_MIA/discos/disco3.mia -name=Particion3
+mount -path=/home/jona/Proyecto1_MIA/discos/disco3.mia -name=Particion3
+
+# 2. Verificar ID generado
+mounted
+
+# 3. Formatear con el ID CORRECTO (303A para disco3)
+mkfs -id=303A
+
+# 4. Login
+login -user=root -pass=123 -id=303A
+
+# 5. Crear archivos y carpetas
+mkdir -path=/carpeta1 -p
+mkfile -path=/archivo1.txt -size=100
+
+# 6. Generar todos los reportes
+rep -name=mbr -path=/home/jona/Proyecto1_MIA/reportes -id=303A
+rep -name=disk -path=/home/jona/Proyecto1_MIA/reportes -id=303A
+rep -name=inode -path=/home/jona/Proyecto1_MIA/reportes -id=303A
+rep -name=block -path=/home/jona/Proyecto1_MIA/reportes -id=303A
+rep -name=bm_inode -path=/home/jona/Proyecto1_MIA/reportes -id=303A
+rep -name=bm_block -path=/home/jona/Proyecto1_MIA/reportes -id=303A
+rep -name=tree -path=/home/jona/Proyecto1_MIA/reportes -id=303A
+rep -name=sb -path=/home/jona/Proyecto1_MIA/reportes -id=303A
+
+# 7. Logout
+logout

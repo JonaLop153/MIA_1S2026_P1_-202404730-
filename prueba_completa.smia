@@ -1,0 +1,131 @@
+# ======================================
+# PRUEBA COMPLETA - PROYECTO 1 MIA
+# Carnet: 202404730
+# ======================================
+
+# ======================================
+# PARTE 2: DISCOS Y PARTICIONES (37 pts)
+# ======================================
+
+# --- MKDISK (5 pts) ---
+# Crear disco de 20MB
+mkdisk -size=20 -unit=M -path=/home/jona/Proyecto1_MIA/discos/prueba.mia
+
+# --- FDISK (12 pts) ---
+# Partición Primaria (3 pts)
+fdisk -size=10 -unit=M -path=/home/jona/Proyecto1_MIA/discos/prueba.mia -name=Primaria1
+
+# Partición Extendida (3 pts)
+fdisk -size=5 -unit=M -type=E -path=/home/jona/Proyecto1_MIA/discos/prueba.mia -name=Extendida1
+
+# Partición Lógica (4 pts)
+fdisk -size=2 -unit=M -type=L -path=/home/jona/Proyecto1_MIA/discos/prueba.mia -name=Logica1
+
+# Restricciones (2 pts) - Intentar otra extendida (debe fallar)
+fdisk -size=1 -unit=M -type=E -path=/home/jona/Proyecto1_MIA/discos/prueba.mia -name=Extendida2
+
+# --- MOUNT (5 pts) ---
+# Montar partición primaria (ID debe ser 301A)
+mount -path=/home/jona/Proyecto1_MIA/discos/prueba.mia -name=Primaria1
+
+# Verificar ID generado
+mounted
+
+# Intentar montar la misma partición de nuevo (debe fallar - 2.5 pts)
+mount -path=/home/jona/Proyecto1_MIA/discos/prueba.mia -name=Primaria1
+
+# --- MKFS (5 pts) ---
+# Formatear partición
+mkfs -id=301A
+
+# --- REPORTE MBR (4 pts) ---
+rep -name=mbr -path=/home/jona/Proyecto1_MIA/reportes -id=301A
+
+# --- REPORTE DISK (4 pts) ---
+rep -name=disk -path=/home/jona/Proyecto1_MIA/reportes -id=301A
+
+# ======================================
+# PARTE 3: SISTEMA DE ARCHIVOS (7 pts)
+# ======================================
+
+# --- LOGIN (1 pt) ---
+login -user=root -pass=123 -id=301A
+
+# --- MKDIR (8 pts) ---
+# Crear carpeta
+mkdir -path=/carpeta1 -p
+
+# --- MKFILE (10 pts) ---
+# Crear archivo con tamaño
+mkfile -path=/archivo1.txt -size=100
+
+# Crear archivo con contenido de archivo real
+mkfile -path=/archivo2.txt -cont=/home/jona/test.txt -r
+
+# --- CAT (2 pts) ---
+cat -file1=/archivo1.txt
+
+# ======================================
+# PARTE 4: USUARIOS Y GRUPOS (5 pts)
+# ======================================
+
+# --- MKGRP (0.5 pts) ---
+mkgrp -name=usuarios
+
+# --- MKUSR (0.5 pts) ---
+mkusr -user=user1 -pass=123 -grp=usuarios
+
+# --- CHGRP (1 pt) ---
+chgrp -user=user1 -grp=root
+
+# --- RMUSR (0.5 pts) ---
+rmusr -user=user1
+
+# --- RMGRP (0.5 pts) ---
+rmgrp -name=usuarios
+
+# --- LOGOUT (1 pt) ---
+logout
+
+# ======================================
+# PARTE 5: REPORTES EXT2 (18 pts)
+# ======================================
+
+# --- LOGIN para reportes ---
+login -user=root -pass=123 -id=301A
+
+# --- REPORTE INODE (3 pts) ---
+rep -name=inode -path=/home/jona/Proyecto1_MIA/reportes -id=301A
+
+# --- REPORTE BLOCK (3 pts) ---
+rep -name=block -path=/home/jona/Proyecto1_MIA/reportes -id=301A
+
+# --- REPORTE BM_INODE (2 pts) ---
+rep -name=bm_inode -path=/home/jona/Proyecto1_MIA/reportes -id=301A
+
+# --- REPORTE BM_BLOCK (2 pts) ---
+rep -name=bm_block -path=/home/jona/Proyecto1_MIA/reportes -id=301A
+
+# --- REPORTE TREE (2 pts) ---
+rep -name=tree -path=/home/jona/Proyecto1_MIA/reportes -id=301A
+
+# --- REPORTE SB (2 pts) ---
+rep -name=sb -path=/home/jona/Proyecto1_MIA/reportes -id=301A
+
+# --- REPORTE FILE (2 pts) ---
+rep -name=file -path=/home/jona/Proyecto1_MIA/reportes -id=301A -path_file_ls=/archivo1.txt
+
+# --- REPORTE LS (2 pts) ---
+rep -name=ls -path=/home/jona/Proyecto1_MIA/reportes -id=301A -path_file_ls=/
+
+# --- LOGOUT ---
+logout
+
+# ======================================
+# RMDISK (5 pts) - Al final
+# ======================================
+# rmdisk -path=/home/jona/Proyecto1_MIA/discos/prueba.mia
+
+# ======================================
+# FIN DE PRUEBA
+# ======================================

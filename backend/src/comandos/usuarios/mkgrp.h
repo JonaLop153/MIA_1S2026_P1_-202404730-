@@ -1,17 +1,16 @@
-#ifndef MKDIR_H
-#define MKDIR_H
+#ifndef MKGRP_H
+#define MKGRP_H
 
 #include <string>
 #include <map>
 using namespace std;
 
-class MkDir {
+class MkGrp {
 public:
     static map<string, string> parsearParametros(const string& comando);
     static string ejecutar(const string& comando);
 private:
     static bool validarParametros(const map<string, string>& params, string& error);
-    static bool crearCarpeta(const string& id, const string& path, bool crearPadres);
 };
 
 #endif
