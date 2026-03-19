@@ -1,0 +1,6 @@
+digraph Ls {
+  rankdir=TB;
+  node [shape=record, style=filled];
+
+  root [label="{Dir:/|Inodos:2,3,4|Archivos:users.txt}", fillcolor=lightyellow];
+}

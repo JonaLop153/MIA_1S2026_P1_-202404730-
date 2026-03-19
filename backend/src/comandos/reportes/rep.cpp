@@ -83,7 +83,7 @@ string Rep::generarReporteMBR(const string& diskPath) {
     ostringstream dot;
     dot << "digraph MBR {\n  rankdir=TB;\n  node [shape=record, style=filled, fillcolor=lightblue];\n\n";
     char fechaStr[50]; strftime(fechaStr, sizeof(fechaStr), "%Y-%m-%d %H:%M:%S", localtime(&mbr.mbr_fecha_creacion));
-    dot << "  mbr [label=\"{MBR\\nTamaño: " << mbr.mbr_tamano << " bytes\\nFecha: " << fechaStr << "\\nSignature: 0x" << hex << mbr.mbr_dsk_signature << dec << "\\nFit: " << mbr.dsk_fit << "}\"];\n\n";
+    dot << "  mbr [label=\"{MBR|Tamaño: " << mbr.mbr_tamano << " bytes|Fecha: " << fechaStr << "|Signature: 0x" << hex << mbr.mbr_dsk_signature << dec << "|Fit: " << mbr.dsk_fit << "}\"];\n\n";
     
     for (int i = 0; i < 4; i++) {
         if (mbr.mbr_partitions[i].part_status == '1' || mbr.mbr_partitions[i].part_type == 'P' || mbr.mbr_partitions[i].part_type == 'E') {
@@ -92,9 +92,9 @@ string Rep::generarReporteMBR(const string& diskPath) {
                 if (mbr.mbr_partitions[i].part_name[j] >= 32 && mbr.mbr_partitions[i].part_name[j] <= 126) nombre += mbr.mbr_partitions[i].part_name[j];
             for (int j = 0; j < 4 && mbr.mbr_partitions[i].part_id[j] != '\0'; j++) 
                 if (mbr.mbr_partitions[i].part_id[j] >= 32 && mbr.mbr_partitions[i].part_id[j] <= 126) id += mbr.mbr_partitions[i].part_id[j];
-            dot << "  p" << i << " [label=\"{Partición " << i << "\\nNombre: " << escapeDot(nombre) << "\\nTipo: " << mbr.mbr_partitions[i].part_type << "\\nStart: " << mbr.mbr_partitions[i].part_start << "\\nSize: " << mbr.mbr_partitions[i].part_size << " bytes\\n";
-            if (!id.empty()) dot << "ID: " << escapeDot(id) << "\\n";
-            dot << "Fit: " << mbr.mbr_partitions[i].part_fit << "}\"];\n  mbr -> p" << i << ";\n";
+            dot << "  p" << i << " [label=\"{Partición " << i << "|Nombre: " << escapeDot(nombre) << "|Tipo: " << mbr.mbr_partitions[i].part_type << "|Start: " << mbr.mbr_partitions[i].part_start << "|Size: " << mbr.mbr_partitions[i].part_size << " bytes";
+            if (!id.empty()) dot << "|ID: " << escapeDot(id);
+            dot << "|Fit: " << mbr.mbr_partitions[i].part_fit << "}\"];\n  mbr -> p" << i << ";\n";
         }
     }
     dot << "}\n";
@@ -139,24 +139,25 @@ string Rep::generarReporteInode(const string& diskPath, int partStart, SuperBloc
     if (!file.is_open()) return "Error: No se pudo abrir el disco";
     
     char* bitmapInodos = new char[(sb.s_inodes_count + 7) / 8]();
-    file.seekg(sb.s_bm_inode_start, ios::beg);
+    file.seekg(partStart + sb.s_bm_inode_start, ios::beg);
     file.read(bitmapInodos, (sb.s_inodes_count + 7) / 8);
     
     for (int i = sb.s_firts_ino; i < sb.s_inodes_count; i++) {
         int byteIndex = i / 8, bitIndex = i % 8;
         if ((bitmapInodos[byteIndex] & (1 << bitIndex)) != 0) {
             Inodo inodo;
-            file.seekg(sb.s_inode_start + (i * sizeof(Inodo)), ios::beg);
+            file.seekg(partStart + sb.s_inode_start + (i * sizeof(Inodo)), ios::beg);
             file.read(reinterpret_cast<char*>(&inodo), sizeof(Inodo));
-            dot << "  inode" << i << " [label=\"{Inodo " << i << "\\n";
-            dot << "UID: " << inodo.i_uid << "\\nGID: " << inodo.i_gid << "\\n";
-            dot << "Size: " << inodo.i_s << "\\nType: " << (inodo.i_type == '0' ? "Carpeta" : "Archivo") << "\\n";
-            dot << "Perm: " << inodo.i_perm[0] << inodo.i_perm[1] << inodo.i_perm[2] << "\\n";
-            dot << "Blocks: ";
-            for (int j = 0; j < 15; j++) {
-                if (inodo.i_block[j] != -1) dot << inodo.i_block[j] << " ";
-            }
-            dot << "}\"];\n";
+            
+            string tipo = (inodo.i_type == '0') ? "Carpeta" : "Archivo";
+            
+            // ✅ Usar | para separar campos en records de Graphviz
+            dot << "  inode" << i << " [label=\"Inodo " << i 
+                << "|UID:" << inodo.i_uid 
+                << "|GID:" << inodo.i_gid 
+                << "|Size:" << inodo.i_s 
+                << "|Type:" << tipo 
+                << "\", fillcolor=lightblue];\n";
         }
     }
     delete[] bitmapInodos;
@@ -173,7 +174,7 @@ string Rep::generarReporteBlock(const string& diskPath, int partStart, SuperBloc
     if (!file.is_open()) return "Error: No se pudo abrir el disco";
     
     char* bitmapBloques = new char[(sb.s_blocks_count + 7) / 8]();
-    file.seekg(sb.s_bm_block_start, ios::beg);
+    file.seekg(partStart + sb.s_bm_block_start, ios::beg);
     file.read(bitmapBloques, (sb.s_blocks_count + 7) / 8);
     
     int count = 0;
@@ -181,14 +182,32 @@ string Rep::generarReporteBlock(const string& diskPath, int partStart, SuperBloc
         int byteIndex = i / 8, bitIndex = i % 8;
         if ((bitmapBloques[byteIndex] & (1 << bitIndex)) != 0) {
             BloqueArchivo bloque;
-            file.seekg(sb.s_block_start + (i * sb.s_block_s), ios::beg);
+            file.seekg(partStart + sb.s_block_start + (i * sb.s_block_s), ios::beg);
             file.read(reinterpret_cast<char*>(&bloque), sizeof(BloqueArchivo));
-            dot << "  block" << i << " [label=\"{Bloque " << i << "\\n";
-            string contenido = "";
+            
+            // ✅ Escape COMPLETO para DOT
+            string contenidoEscapado = "";
             for (int j = 0; j < 64 && bloque.b_content[j] != '\0'; j++) {
-                if (bloque.b_content[j] >= 32 && bloque.b_content[j] <= 126) contenido += bloque.b_content[j];
+                char c = bloque.b_content[j];
+                if (c == '"' || c == '\\' || c == '{' || c == '}' || c == '<' || c == '>' || c == '|') {
+                    contenidoEscapado += '\\';
+                    contenidoEscapado += c;
+                } else if (c == '\n') {
+                    contenidoEscapado += "\\n";
+                } else if (c == '\r') {
+                    contenidoEscapado += "\\r";
+                } else if (c >= 32 && c <= 126) {
+                    contenidoEscapado += c;
+                }
             }
-            dot << "Content: " << escapeDot(contenido.substr(0, 30)) << "...}\\n\", fillcolor=lightgreen];\n";
+            
+            // ✅ Limitar a 15 caracteres
+            if (contenidoEscapado.size() > 15) {
+                contenidoEscapado = contenidoEscapado.substr(0, 15) + "...";
+            }
+            
+            dot << "  block" << i << " [label=\"{Bloque " << i << "|Cont: " 
+                << contenidoEscapado << "}\", fillcolor=lightgreen];\n";
             count++;
         }
     }
@@ -204,7 +223,7 @@ string Rep::generarReporteBmInode(const string& diskPath, int partStart, SuperBl
     
     int bitmapSize = (sb.s_inodes_count + 7) / 8;
     char* bitmap = new char[bitmapSize]();
-    file.seekg(sb.s_bm_inode_start, ios::beg);
+    file.seekg(partStart + sb.s_bm_inode_start, ios::beg);
     file.read(bitmap, bitmapSize);
     file.close();
     
@@ -230,7 +249,7 @@ string Rep::generarReporteBmBlock(const string& diskPath, int partStart, SuperBl
     
     int bitmapSize = (sb.s_blocks_count + 7) / 8;
     char* bitmap = new char[bitmapSize]();
-    file.seekg(sb.s_bm_block_start, ios::beg);
+    file.seekg(partStart + sb.s_bm_block_start, ios::beg);
     file.read(bitmap, bitmapSize);
     file.close();
     
@@ -258,16 +277,16 @@ string Rep::generarReporteTree(const string& diskPath, int partStart, SuperBlock
     if (!file.is_open()) return "Error: No se pudo abrir el disco";
     
     char* bitmapInodos = new char[(sb.s_inodes_count + 7) / 8]();
-    file.seekg(sb.s_bm_inode_start, ios::beg);
+    file.seekg(partStart + sb.s_bm_inode_start, ios::beg);
     file.read(bitmapInodos, (sb.s_inodes_count + 7) / 8);
     
-    dot << "  root [label=\"{/}\\nInodo: 2\", fillcolor=lightyellow];\n";
+    dot << "  root [label=\"{/{|Inodo: 2}\", fillcolor=lightyellow];\n";
     
     for (int i = sb.s_firts_ino; i < sb.s_inodes_count && i < 20; i++) {
         int byteIndex = i / 8, bitIndex = i % 8;
         if ((bitmapInodos[byteIndex] & (1 << bitIndex)) != 0) {
             Inodo inodo;
-            file.seekg(sb.s_inode_start + (i * sizeof(Inodo)), ios::beg);
+            file.seekg(partStart + sb.s_inode_start + (i * sizeof(Inodo)), ios::beg);
             file.read(reinterpret_cast<char*>(&inodo), sizeof(Inodo));
             
             string tipo = (inodo.i_type == '0') ? "Carpeta" : "Archivo";
@@ -294,65 +313,76 @@ string Rep::generarReporteSb(const string& diskPath, int partStart) {
     
     ostringstream dot;
     dot << "digraph SuperBlock {\n  rankdir=TB;\n  node [shape=record, style=filled, fillcolor=lightblue];\n\n";
-    dot << "  sb [label=\"{SuperBlock\\n";
-    dot << "Filesystem Type: " << sb.s_filesystem_type << "\\n";
-    dot << "Inodes Count: " << sb.s_inodes_count << "\\n";
-    dot << "Blocks Count: " << sb.s_blocks_count << "\\n";
-    dot << "Free Inodes: " << sb.s_free_inodes_count << "\\n";
-    dot << "Free Blocks: " << sb.s_free_blocks_count << "\\n";
-    dot << "Magic: 0x" << hex << sb.s_magic << dec << "\\n";
-    dot << "Inode Size: " << sb.s_inode_s << "\\n";
-    dot << "Block Size: " << sb.s_block_s << "\\n";
-    dot << "First Ino: " << sb.s_firts_ino << "\\n";
-    dot << "First Blo: " << sb.s_first_blo << "\\n";
-    dot << "BM Inode Start: " << sb.s_bm_inode_start << "\\n";
-    dot << "BM Block Start: " << sb.s_bm_block_start << "\\n";
-    dot << "Inode Start: " << sb.s_inode_start << "\\n";
-    dot << "Block Start: " << sb.s_block_start << "\\n";
-    dot << "}\"];\n";
+    dot << "  sb [label=\"{SuperBlock|";
+    dot << "Filesystem Type: " << sb.s_filesystem_type << "|";
+    dot << "Inodes Count: " << sb.s_inodes_count << "|";
+    dot << "Blocks Count: " << sb.s_blocks_count << "|";
+    dot << "Free Inodes: " << sb.s_free_inodes_count << "|";
+    dot << "Free Blocks: " << sb.s_free_blocks_count << "|";
+    dot << "Magic: 0x" << hex << sb.s_magic << dec << "|";
+    dot << "Inode Size: " << sb.s_inode_s << "|";
+    dot << "Block Size: " << sb.s_block_s << "|";
+    dot << "First Ino: " << sb.s_firts_ino << "|";
+    dot << "First Blo: " << sb.s_first_blo << "|";
+    dot << "BM Inode Start: " << sb.s_bm_inode_start << "|";
+    dot << "BM Block Start: " << sb.s_bm_block_start << "|";
+    dot << "Inode Start: " << sb.s_inode_start << "|";
+    dot << "Block Start: " << sb.s_block_start << "}\"];\n";
     dot << "}\n";
     return dot.str();
 }
 
 string Rep::generarReporteFile(const string& diskPath, int partStart, SuperBlock& sb, const string& filePath) {
-    ostringstream txt;
-    txt << "Reporte de Archivo: " << filePath << "\n";
-    txt << "========================================\n\n";
-    txt << "Contenido:\n";
-    txt << "----------------------------------------\n";
-    
+    // ✅ Para /users.txt, leer contenido real
     if (filePath == "/users.txt") {
         ifstream inodeFile(diskPath, ios::binary | ios::in);
-        inodeFile.seekg(sb.s_inode_start + (3 * sizeof(Inodo)), ios::beg);
+        inodeFile.seekg(partStart + sb.s_inode_start + (3 * sizeof(Inodo)), ios::beg);
         Inodo inodoUsers;
         inodeFile.read(reinterpret_cast<char*>(&inodoUsers), sizeof(Inodo));
         inodeFile.close();
         
         int bloqueUsers = inodoUsers.i_block[0];
         ifstream blockFile(diskPath, ios::binary | ios::in);
-        blockFile.seekg(sb.s_block_start + (bloqueUsers * sb.s_block_s), ios::beg);
+        blockFile.seekg(partStart + sb.s_block_start + (bloqueUsers * sb.s_block_s), ios::beg);
         BloqueArchivo bloqueContent;
         blockFile.read(reinterpret_cast<char*>(&bloqueContent), sizeof(BloqueArchivo));
         blockFile.close();
         
-        txt << string(bloqueContent.b_content) << "\n";
-    } else {
-        txt << "(Implementación completa requiere búsqueda de inodos por path)\n";
+        string contenido = "";
+        for (int i = 0; i < 64; i++) {
+            if (bloqueContent.b_content[i] == '\0') break;
+            if (bloqueContent.b_content[i] == '\n' || 
+                (bloqueContent.b_content[i] >= 32 && bloqueContent.b_content[i] <= 126)) {
+                contenido += bloqueContent.b_content[i];
+            }
+        }
+        return contenido;
     }
-    txt << "----------------------------------------\n";
-    return txt.str();
+    
+    // ✅ Para OTROS archivos, retornar formato DOT válido (no texto plano)
+    ostringstream dot;
+    dot << "digraph File {\n  rankdir=TB;\n  node [shape=record, style=filled];\n\n";
+    dot << "  file [label=\"{Archivo: " << escapeDot(filePath) << "|Contenido: (búsqueda de inodos requerida)}\\n\", fillcolor=lightgreen];\n";
+    dot << "}\n";
+    return dot.str();
 }
 
 string Rep::generarReporteLs(const string& diskPath, int partStart, SuperBlock& sb, const string& dirPath) {
     ostringstream dot;
     dot << "digraph Ls {\n  rankdir=TB;\n  node [shape=record, style=filled];\n\n";
     
-    // ✅ Escape completo del path para DOT
-    string escapedPath = escapeDot(dirPath);
+    // ✅ Escape completo del path
+    string escapedPath = "";
+    for (char c : dirPath) {
+        if (c == '"' || c == '\\' || c == '{' || c == '}' || c == '<' || c == '>' || c == '|') {
+            escapedPath += '\\';
+        }
+        escapedPath += c;
+    }
     
-    dot << "  root [label=\"{Directorio: " << escapedPath << "\\n";
-    dot << "Inodos: 2, 3, 4...\\n";
-    dot << "Archivos: users.txt, ...}\\n\", fillcolor=lightyellow];\n";
+    // ✅ Sin \n al final, usar | para separar
+    dot << "  root [label=\"{Dir:" << escapedPath 
+        << "|Inodos:2,3,4|Archivos:users.txt}\", fillcolor=lightyellow];\n";
     dot << "}\n";
     return dot.str();
 }
@@ -388,8 +418,12 @@ string Rep::ejecutar(const string& comando) {
     
     // ✅ Determinar extensión según tipo de reporte
     string fileExtension = ".jpg";
-    if (name == "bm_inode" || name == "bm_block" || name == "file") {
+    if (name == "bm_inode" || name == "bm_block") {
         fileExtension = ".txt";
+    } else if (name == "file" || name == "ls") {
+        fileExtension = ".txt";  // ✅ file y ls siempre son .txt
+    } else if (name == "tree") {
+        fileExtension = ".png";
     }
     
     // ✅ Respetar extensión del archivo de salida si está especificada

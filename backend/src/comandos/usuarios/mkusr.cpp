@@ -61,18 +61,19 @@ string MkUsr::ejecutar(const string& comando) {
     sbFile.seekg(partStart, ios::beg);
     SuperBlock sb; sbFile.read(reinterpret_cast<char*>(&sb), sizeof(SuperBlock)); sbFile.close();
     
+    // Leer inodo 3 (users.txt)
     ifstream inodeFile(diskPath, ios::binary | ios::in);
-    inodeFile.seekg(sb.s_inode_start + (3 * sizeof(Inodo)), ios::beg);
+    inodeFile.seekg(partStart + sb.s_inode_start + (3 * sizeof(Inodo)), ios::beg);
     Inodo inodoUsers; inodeFile.read(reinterpret_cast<char*>(&inodoUsers), sizeof(Inodo)); inodeFile.close();
     
     int bloqueUsers = inodoUsers.i_block[0];
     ifstream blockFile(diskPath, ios::binary | ios::in);
-    blockFile.seekg(sb.s_block_start + (bloqueUsers * sb.s_block_s), ios::beg);
+    blockFile.seekg(partStart + sb.s_block_start + (bloqueUsers * sb.s_block_s), ios::beg);
     BloqueArchivo bloqueContent; blockFile.read(reinterpret_cast<char*>(&bloqueContent), sizeof(BloqueArchivo)); blockFile.close();
     
     string contenido(bloqueContent.b_content);
     
-    // ✅ Validar que el usuario NO exista (incluso si está eliminado)
+    // ✅ Validar que el usuario NO exista
     istringstream checkIss(contenido);
     string checkLinea;
     while (getline(checkIss, checkLinea)) {
@@ -124,26 +125,45 @@ string MkUsr::ejecutar(const string& comando) {
     }
     if (!grupoExiste) return "Error: El grupo no existe: " + grp;
     
-    // Calcular nuevo UID
+    // ✅ Calcular nuevo UID
     int nuevoUID = 2;
-    size_t pos = contenido.rfind('\n');
-    if (pos != string::npos) {
-        string ultimaLinea = contenido.substr(pos + 1);
-        istringstream lastIss(ultimaLinea);
-        string idStr; getline(lastIss, idStr, ',');
-        try { nuevoUID = stoi(idStr) + 1; } catch (...) { nuevoUID = 2; }
+    istringstream maxIss(contenido);
+    string maxLinea;
+    while (getline(maxIss, maxLinea)) {
+        maxLinea.erase(0, maxLinea.find_first_not_of(" \t\r\n"));
+        maxLinea.erase(maxLinea.find_last_not_of(" \t\r\n") + 1);
+        if (maxLinea.empty()) continue;
+        
+        istringstream maxStream(maxLinea);
+        string uidStr;
+        getline(maxStream, uidStr, ',');
+        try {
+            int uid = stoi(uidStr);
+            if (uid >= nuevoUID) nuevoUID = uid + 1;
+        } catch (...) {}
     }
     
-    // Agregar nueva línea de usuario
-    string nuevaLinea = "\n" + to_string(nuevoUID) + ",U," + grp + "," + user + "," + pass;
-    string nuevoContenido = contenido + nuevaLinea;
+    // ✅ Agregar nueva línea de usuario
+    string nuevaLinea = to_string(nuevoUID) + ",U," + grp + "," + user + "," + pass + "\n";
     
+    // ✅ Verificar que quepa en 63 bytes
+    if (contenido.length() + nuevaLinea.length() > 63) {
+        return "Error: No hay espacio en users.txt para más usuarios";
+    }
+    
+    // Si el contenido no termina con \n, agregarlo
+    if (!contenido.empty() && contenido.back() != '\n') {
+        contenido += "\n";
+    }
+    contenido += nuevaLinea;
+    
+    // ✅ Escribir de vuelta
     memset(bloqueContent.b_content, 0, 64);
-    strncpy(bloqueContent.b_content, nuevoContenido.c_str(), 63);
+    strncpy(bloqueContent.b_content, contenido.c_str(), 63);
     bloqueContent.b_content[63] = '\0';
     
     fstream writeBlock(diskPath, ios::binary | ios::in | ios::out);
-    writeBlock.seekg(sb.s_block_start + (bloqueUsers * sb.s_block_s), ios::beg);
+    writeBlock.seekg(partStart + sb.s_block_start + (bloqueUsers * sb.s_block_s), ios::beg);
     writeBlock.write(reinterpret_cast<char*>(&bloqueContent), sizeof(BloqueArchivo));
     writeBlock.close();
     

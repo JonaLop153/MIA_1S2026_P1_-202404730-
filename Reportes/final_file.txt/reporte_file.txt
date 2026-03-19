@@ -1,0 +1,4 @@
+1,G,root
+1,U,root,root,123
+2,G,usuarios
+3,U,usuarios,user1,abc

@@ -5,6 +5,7 @@
 #include <sstream>
 #include <filesystem>
 #include <cstring>
+#include <iostream>
 
 namespace fs = std::filesystem;
 
@@ -50,52 +51,55 @@ string Cat::ejecutar(const string& comando) {
     string diskPath = montadas.at(id).first;
     int indice = montadas.at(id).second;
     
+    // ✅ Abrir archivo del disco
     ifstream file(diskPath, ios::binary | ios::in);
     if (!file.is_open()) return "Error: No se pudo abrir el disco";
     
+    // ✅ Leer MBR
     MBR mbr;
     file.read(reinterpret_cast<char*>(&mbr), sizeof(MBR));
-    file.close();
-    
     int partStart = mbr.mbr_partitions[indice].part_start;
     
-    ifstream sbFile(diskPath, ios::binary | ios::in);
-    sbFile.seekg(partStart, ios::beg);
+    // ✅ Leer SuperBlock
+    file.seekg(partStart, ios::beg);
     SuperBlock sb;
-    sbFile.read(reinterpret_cast<char*>(&sb), sizeof(SuperBlock));
-    sbFile.close();
+    file.read(reinterpret_cast<char*>(&sb), sizeof(SuperBlock));
     
-    // ✅ Caso especial: /users.txt (inodo 3)
+    // ✅ CASO ESPECIAL: /users.txt (inodo 3)
     if (filePath == "/users.txt") {
         // Leer inodo 3
-        ifstream inodeFile(diskPath, ios::binary | ios::in);
-        inodeFile.seekg(sb.s_inode_start + (3 * sizeof(Inodo)), ios::beg);
+        file.seekg(partStart + sb.s_inode_start + (3 * sizeof(Inodo)), ios::beg);
         Inodo inodoUsers;
-        inodeFile.read(reinterpret_cast<char*>(&inodoUsers), sizeof(Inodo));
-        inodeFile.close();
+        file.read(reinterpret_cast<char*>(&inodoUsers), sizeof(Inodo));
         
         // Leer bloque de users.txt
-        int bloqueUsers = inodoUsers.i_block[0];
-        ifstream blockFile(diskPath, ios::binary | ios::in);
-        blockFile.seekg(sb.s_block_start + (bloqueUsers * sb.s_block_s), ios::beg);
-        BloqueArchivo bloqueContent;
-        blockFile.read(reinterpret_cast<char*>(&bloqueContent), sizeof(BloqueArchivo));
-        blockFile.close();
+        int bloqueNum = inodoUsers.i_block[0];
+        int bloqueOffset = partStart + sb.s_block_start + (bloqueNum * sb.s_block_s);
         
-        // ✅ Mostrar contenido completo (hasta 64 bytes)
+        file.seekg(bloqueOffset, ios::beg);
+        char buffer[64];
+        memset(buffer, 0, 64);
+        file.read(buffer, 64);
+        file.close();
+        
+        // ✅ Retornar contenido legible
         string contenido = "";
-        for (int i = 0; i < 64 && bloqueContent.b_content[i] != '\0'; i++) {
-            char c = bloqueContent.b_content[i];
-            if (c >= 32 && c <= 126) {
-                contenido += c;
-            } else if (c == '\n') {
-                contenido += '\n';
+        for (int i = 0; i < 64; i++) {
+            if (buffer[i] == '\0') break;
+            if (buffer[i] == '\n' || (buffer[i] >= 32 && buffer[i] <= 126)) {
+                contenido += buffer[i];
             }
         }
+        
+        // DEBUG en terminal del backend
+        std::cerr << "DEBUG CAT: users.txt contenido='" << contenido << "'" << std::endl;
+        
         return contenido;
     }
     
-    // Otros archivos (implementación simplificada)
+    file.close();
+    
+    // ✅ Otros archivos (implementación simplificada)
     ostringstream oss;
     oss << "Contenido del archivo: " << filePath << "\n";
     oss << "----------------------------------------\n";

@@ -1,0 +1,6 @@
+digraph SuperBlock {
+  rankdir=TB;
+  node [shape=record, style=filled, fillcolor=lightblue];
+
+  sb [label="{SuperBlock|Filesystem Type: 2|Inodes Count: 100|Blocks Count: 300|Free Inodes: 90|Free Blocks: 278|Magic: 0xef53|Inode Size: 100|Block Size: 64|First Ino: 60|First Blo: 72|BM Inode Start: 76|BM Block Start: 89|Inode Start: 127|Block Start: 10127}"];
+}

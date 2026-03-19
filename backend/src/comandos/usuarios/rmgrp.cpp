@@ -5,6 +5,7 @@
 #include <sstream>
 #include <filesystem>
 #include <cstring>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -60,27 +61,34 @@ string RmGrp::ejecutar(const string& comando) {
     SuperBlock sb; sbFile.read(reinterpret_cast<char*>(&sb), sizeof(SuperBlock)); sbFile.close();
     
     ifstream inodeFile(diskPath, ios::binary | ios::in);
-    inodeFile.seekg(sb.s_inode_start + (3 * sizeof(Inodo)), ios::beg);
+    inodeFile.seekg(partStart + sb.s_inode_start + (3 * sizeof(Inodo)), ios::beg);
     Inodo inodoUsers; inodeFile.read(reinterpret_cast<char*>(&inodoUsers), sizeof(Inodo)); inodeFile.close();
     
     int bloqueUsers = inodoUsers.i_block[0];
     ifstream blockFile(diskPath, ios::binary | ios::in);
-    blockFile.seekg(sb.s_block_start + (bloqueUsers * sb.s_block_s), ios::beg);
+    blockFile.seekg(partStart + sb.s_block_start + (bloqueUsers * sb.s_block_s), ios::beg);
     BloqueArchivo bloqueContent; blockFile.read(reinterpret_cast<char*>(&bloqueContent), sizeof(BloqueArchivo)); blockFile.close();
     
     string contenido(bloqueContent.b_content);
     
-    // ✅ Buscar grupo y marcar como eliminado (GID = 0)
+    // ✅ Buscar grupo y marcar como eliminado
     bool grupoEncontrado = false;
-    istringstream iss(contenido);
-    string linea;
     string nuevoContenido = "";
     
+    istringstream iss(contenido);
+    string linea;
+    
     while (getline(iss, linea)) {
-        // Limpiar línea completamente
-        linea.erase(0, linea.find_first_not_of(" \t\r\n"));
-        linea.erase(linea.find_last_not_of(" \t\r\n") + 1);
-        if (linea.empty()) continue;
+        string lineaOriginal = linea;
+        
+        // Limpiar línea para comparar
+        while (!linea.empty() && (linea.back() == '\n' || linea.back() == '\r' || linea.back() == ' ')) {
+            linea.pop_back();
+        }
+        if (linea.empty()) {
+            nuevoContenido += lineaOriginal + "\n";
+            continue;
+        }
         
         istringstream lineStream(linea);
         string gidStr, type, grupo;
@@ -89,31 +97,29 @@ string RmGrp::ejecutar(const string& comando) {
         
         if (type.find('G') != string::npos) {
             getline(lineStream, grupo, ',');
-            // Limpiar espacios del nombre del grupo
-            grupo.erase(0, grupo.find_first_not_of(" \t"));
-            grupo.erase(grupo.find_last_not_of(" \t\r\n") + 1);
+            while (!grupo.empty() && (grupo.front() == ' ' || grupo.front() == '\t')) grupo.erase(0, 1);
+            while (!grupo.empty() && (grupo.back() == ' ' || grupo.back() == '\t')) grupo.pop_back();
             
             if (grupo == nombreGrupo) {
                 grupoEncontrado = true;
-                // ✅ Marcar como eliminado: GID = 0
+                // Marcar como eliminado: GID = 0
                 nuevoContenido += "0,G," + grupo + "\n";
             } else {
-                nuevoContenido += linea + "\n";
+                nuevoContenido += lineaOriginal + "\n";
             }
         } else {
-            // Líneas de usuario, mantener intactas
-            nuevoContenido += linea + "\n";
+            nuevoContenido += lineaOriginal + "\n";
         }
     }
     
     if (!grupoEncontrado) return "Error: Grupo no encontrado: " + nombreGrupo;
     
-    // Escribir de vuelta
+    // ✅ Escribir de vuelta
     memset(bloqueContent.b_content, 0, 64);
     strncpy(bloqueContent.b_content, nuevoContenido.c_str(), 63);
     
     fstream writeBlock(diskPath, ios::binary | ios::in | ios::out);
-    writeBlock.seekg(sb.s_block_start + (bloqueUsers * sb.s_block_s), ios::beg);
+    writeBlock.seekg(partStart + sb.s_block_start + (bloqueUsers * sb.s_block_s), ios::beg);
     writeBlock.write(reinterpret_cast<char*>(&bloqueContent), sizeof(BloqueArchivo));
     writeBlock.close();
     

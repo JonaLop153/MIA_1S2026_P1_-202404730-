@@ -120,10 +120,11 @@ bool MkFile::crearArchivo(const string& id, const string& path, int size, const 
         inodoArchivo.i_block[i] = -1;
     }
     
-    fstream inodeFile(diskPath, ios::binary | ios::in | ios::out);
-    inodeFile.seekg(sb.s_inode_start + (inodoLibre * sizeof(Inodo)), ios::beg);
-    inodeFile.write(reinterpret_cast<char*>(&inodoArchivo), sizeof(Inodo));
-    inodeFile.close();
+    // ✅ Offset correcto: partStart + s_inode_start + (inodoLibre * sizeof(Inodo))
+fstream inodeFile(diskPath, ios::binary | ios::in | ios::out);
+inodeFile.seekg(partStart + sb.s_inode_start + (inodoLibre * sizeof(Inodo)), ios::beg);
+inodeFile.write(reinterpret_cast<char*>(&inodoArchivo), sizeof(Inodo));
+inodeFile.close();
     
     // Escribir contenido en bloques
     string contenido = cont;

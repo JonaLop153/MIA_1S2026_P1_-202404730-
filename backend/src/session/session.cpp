@@ -1,6 +1,5 @@
 #include "session.h"
 
-// Usar punteros para inicialización perezosa (evita problemas de orden de inicialización)
 static MountMap* particionesMontadasPtr = nullptr;
 static SesionActiva* sesionActivaPtr = nullptr;
 
@@ -46,11 +45,12 @@ string getMountID(const string& path, int indice) {
     return "";
 }
 
-void iniciarSesion(const string& user, const string& pass, const string& id) {
+void iniciarSesion(const string& user, const string& pass, const string& id, const string& diskPath) {
     SesionActiva& sesion = getSesionActiva();
     sesion.usuario = user;
     sesion.password = pass;
     sesion.idParticion = id;
+    sesion.pathDisco = diskPath;
     sesion.activa = true;
 }
 
@@ -74,4 +74,8 @@ string getUsuarioActual() {
 
 string getIdParticionActual() {
     return getSesionActiva().idParticion;
+}
+
+string getPathDiscoActual() {
+    return getSesionActiva().pathDisco;
 }

@@ -1,0 +1,6 @@
+digraph Tree {
+  rankdir=TB;
+  node [shape=box, style=filled];
+
+  root [label="{/{|Inodo: 2}", fillcolor=lightyellow];
+}

@@ -64,141 +64,44 @@ bool MKFS::buscarParticionMontada(const string& id, string& path, int& indice) {
     return false;
 }
 
-bool MKFS::escribirSuperBlock(const string& path, int start, SuperBlock& sb) {
+bool MKFS::crearUsersTXT(const string& path, int partStart, int inodeTableOffset, int blockTableOffset, int blockSize, int nextFreeBlock) {
     fstream file(path, ios::binary | ios::in | ios::out);
     if (!file.is_open()) return false;
     
-    file.seekp(start, ios::beg);
-    file.write(reinterpret_cast<const char*>(&sb), sizeof(SuperBlock));
-    file.close();
-    return true;
-}
-
-bool MKFS::escribirBitmaps(const string& path, int start, int totalInodos, int totalBloques) {
-    fstream file(path, ios::binary | ios::in | ios::out);
-    if (!file.is_open()) return false;
-    
-    file.seekp(start, ios::beg);
-    
-    // Bitmap de inodos
-    int bitmapInodosSize = (totalInodos + 7) / 8;
-    char* bitmapInodos = new char[bitmapInodosSize]();
-    bitmapInodos[0] = 0b00000011;  // Inodos 0 y 1 ocupados
-    file.write(bitmapInodos, bitmapInodosSize);
-    delete[] bitmapInodos;
-    
-    // Bitmap de bloques
-    int bitmapBloquesSize = (totalBloques + 7) / 8;
-    char* bitmapBloques = new char[bitmapBloquesSize]();
-    bitmapBloques[0] = 0b00001111;  // Bloques 0, 1, 2, 3 ocupados
-    file.write(bitmapBloques, bitmapBloquesSize);
-    delete[] bitmapBloques;
-    
-    file.close();
-    return true;
-}
-
-bool MKFS::escribirInodeTable(const string& path, int start, int totalInodos) {
-    fstream file(path, ios::binary | ios::in | ios::out);
-    if (!file.is_open()) return false;
-    
-    file.seekp(start, ios::beg);
-    
-    int inodeTableSize = totalInodos * sizeof(Inodo);
-    char* inodeTable = new char[inodeTableSize]();
-    file.write(inodeTable, inodeTableSize);
-    delete[] inodeTable;
-    
-    file.close();
-    return true;
-}
-
-bool MKFS::crearInodoRaiz(const string& path, int inodeStart, int blockStart, int blockSize) {
-    fstream file(path, ios::binary | ios::in | ios::out);
-    if (!file.is_open()) return false;
-    
-    // Inodo 2 = raíz (/)
-    Inodo inodoRaiz;
-    memset(&inodoRaiz, 0, sizeof(Inodo));
-    
-    inodoRaiz.i_uid = 1;
-    inodoRaiz.i_gid = 1;
-    inodoRaiz.i_s = blockSize;
-    inodoRaiz.i_atime = time(nullptr);
-    inodoRaiz.i_ctime = time(nullptr);
-    inodoRaiz.i_mtime = time(nullptr);
-    inodoRaiz.i_type = '0';  // Carpeta
-    inodoRaiz.i_perm[0] = '7';
-    inodoRaiz.i_perm[1] = '7';
-    inodoRaiz.i_perm[2] = '7';
-    inodoRaiz.i_block[0] = blockStart / blockSize;
-    
-    for (int i = 1; i < 15; i++) {
-        inodoRaiz.i_block[i] = -1;
-    }
-    
-    file.seekp(inodeStart + (2 * sizeof(Inodo)), ios::beg);
-    file.write(reinterpret_cast<const char*>(&inodoRaiz), sizeof(Inodo));
-    
-    // Bloque de carpeta raíz con "." y ".."
-    BloqueCarpeta bloqueRaiz;
-    memset(&bloqueRaiz, 0, sizeof(BloqueCarpeta));
-    
-    strncpy(bloqueRaiz.b_content[0].b_name, ".", 12);
-    bloqueRaiz.b_content[0].b_inodo = 2;
-    
-    strncpy(bloqueRaiz.b_content[1].b_name, "..", 12);
-    bloqueRaiz.b_content[1].b_inodo = 2;
-    
-    file.seekp(blockStart, ios::beg);
-    file.write(reinterpret_cast<const char*>(&bloqueRaiz), sizeof(BloqueCarpeta));
-    
-    file.close();
-    return true;
-}
-
-bool MKFS::crearUsersTXT(const string& path, int inodeStart, int blockStart, int blockSize, int nextFreeBlock) {
-    fstream file(path, ios::binary | ios::in | ios::out);
-    if (!file.is_open()) return false;
-    
-    // ✅ Contenido EXACTO de users.txt según enunciado (página 21)
-    // Debe iniciar con root group y root user
+    // ✅ Contenido inicial con root
     string contenido = "1,G,root\n1,U,root,root,123\n";
     
-    // Crear inodo para users.txt (inodo 3)
+    // ✅ Inodo 3 para users.txt
     Inodo inodoUsers;
     memset(&inodoUsers, 0, sizeof(Inodo));
-    
     inodoUsers.i_uid = 1;
     inodoUsers.i_gid = 1;
     inodoUsers.i_s = contenido.size();
     inodoUsers.i_atime = time(nullptr);
     inodoUsers.i_ctime = time(nullptr);
     inodoUsers.i_mtime = time(nullptr);
-    inodoUsers.i_type = '1';  // Archivo
+    inodoUsers.i_type = '1';  // 1 = Archivo
     inodoUsers.i_perm[0] = '6';
     inodoUsers.i_perm[1] = '6';
     inodoUsers.i_perm[2] = '4';
-    inodoUsers.i_block[0] = nextFreeBlock;
     
+    // ✅ Asignar primer bloque para users.txt
+    inodoUsers.i_block[0] = nextFreeBlock;
     for (int i = 1; i < 15; i++) {
         inodoUsers.i_block[i] = -1;
     }
     
     // Escribir inodo 3
-    file.seekp(inodeStart + (3 * sizeof(Inodo)), ios::beg);
+    file.seekp(partStart + inodeTableOffset + (3 * sizeof(Inodo)), ios::beg);
     file.write(reinterpret_cast<const char*>(&inodoUsers), sizeof(Inodo));
     
-    // Escribir contenido en bloque
+    // ✅ Escribir contenido en el bloque
     BloqueArchivo bloqueUsers;
     memset(&bloqueUsers, 0, sizeof(BloqueArchivo));
+    strncpy(bloqueUsers.b_content, contenido.c_str(), 63);
+    bloqueUsers.b_content[63] = '\0';
     
-    // ✅ Copiar contenido completo (máximo 63 bytes + null)
-    size_t copySize = min(contenido.size(), (size_t)63);
-    strncpy(bloqueUsers.b_content, contenido.c_str(), copySize);
-    bloqueUsers.b_content[copySize] = '\0';
-    
-    file.seekp(nextFreeBlock * blockSize, ios::beg);
+    file.seekp(partStart + blockTableOffset + (nextFreeBlock * blockSize), ios::beg);
     file.write(reinterpret_cast<const char*>(&bloqueUsers), sizeof(BloqueArchivo));
     
     file.close();
@@ -227,6 +130,7 @@ string MKFS::ejecutar(const string& comando) {
         return "Error: El disco no existe en: " + path;
     }
     
+    // ✅ Leer MBR para obtener información de la partición
     ifstream file(path, ios::binary | ios::in);
     if (!file.is_open()) {
         return "Error: No se pudo abrir el disco";
@@ -247,79 +151,146 @@ string MKFS::ejecutar(const string& comando) {
         return "Error: Partición inválida";
     }
     
-    // Cálculo de estructuras EXT2
-    int blockSize = 64;
+    // =====================
+    // CÁLCULO DE ESTRUCTURAS EXT2
+    // =====================
+    
+    int blockSize = 64;  // Según enunciado
     int sbSize = sizeof(SuperBlock);
     int inodeSize = sizeof(Inodo);
     
+    // Calcular número de estructuras
     int espacioDisponible = partSize - sbSize;
     int estructurasBase = floor(espacioDisponible / (1 + 3 + inodeSize + 3 * blockSize));
     
     int totalInodos = max(10, min(estructurasBase, 100));
     int totalBloques = totalInodos * 3;
     
-    int superBlockOffset = partStart;
-    int bitmapInodosOffset = superBlockOffset + sbSize;
+    // Calcular offsets RELATIVOS al inicio de la partición
+    int superBlockOffset = 0;
+    int bitmapInodosOffset = sbSize;
     int bitmapBloquesOffset = bitmapInodosOffset + ((totalInodos + 7) / 8);
     int inodeTableOffset = bitmapBloquesOffset + ((totalBloques + 7) / 8);
     int blockTableOffset = inodeTableOffset + (totalInodos * inodeSize);
     
-    // Crear SuperBlock
+    // =====================
+    // CREAR SUPERBLOCK
+    // =====================
+    
     SuperBlock sb;
     memset(&sb, 0, sizeof(SuperBlock));
     
-    sb.s_filesystem_type = 2;
+    sb.s_filesystem_type = 2;  // EXT2
     sb.s_inodes_count = totalInodos;
     sb.s_blocks_count = totalBloques;
-    sb.s_free_inodes_count = totalInodos - 3;
-    sb.s_free_blocks_count = totalBloques - 3;
+    sb.s_free_inodes_count = totalInodos - 4;  // 0, 1, 2 (raíz), 3 (users.txt)
+    sb.s_free_blocks_count = totalBloques - 4;  // 0, 1, 2, 3
     sb.s_mtime = time(nullptr);
     sb.s_umtime = 0;
     sb.s_mnt_count = 0;
     sb.s_magic = 0xEF53;
     sb.s_inode_s = inodeSize;
     sb.s_block_s = blockSize;
-    sb.s_firts_ino = 2;
-    sb.s_first_blo = 3;
+    sb.s_firts_ino = 4;
+    sb.s_first_blo = 4;
     sb.s_bm_inode_start = bitmapInodosOffset;
     sb.s_bm_block_start = bitmapBloquesOffset;
     sb.s_inode_start = inodeTableOffset;
     sb.s_block_start = blockTableOffset;
     
-    if (!escribirSuperBlock(path, superBlockOffset, sb)) {
-        return "Error: No se pudo escribir el SuperBlock";
+    // Escribir SuperBlock
+    fstream sbFile(path, ios::binary | ios::in | ios::out);
+    sbFile.seekp(partStart + superBlockOffset, ios::beg);
+    sbFile.write(reinterpret_cast<const char*>(&sb), sizeof(SuperBlock));
+    sbFile.close();
+    
+    // =====================
+    // ESCRIBIR BITMAPS
+    // =====================
+    
+    fstream bitmapFile(path, ios::binary | ios::in | ios::out);
+    
+    // Bitmap de inodos: marcar 0, 1, 2, 3 como ocupados
+    int bitmapInodosSize = (totalInodos + 7) / 8;
+    char* bitmapInodos = new char[bitmapInodosSize]();
+    bitmapInodos[0] = 0b00001111;  // Bits 0, 1, 2, 3 = 1
+    
+    bitmapFile.seekp(partStart + bitmapInodosOffset, ios::beg);
+    bitmapFile.write(bitmapInodos, bitmapInodosSize);
+    delete[] bitmapInodos;
+    
+    // Bitmap de bloques: marcar 0, 1, 2, 3 como ocupados
+    int bitmapBloquesSize = (totalBloques + 7) / 8;
+    char* bitmapBloques = new char[bitmapBloquesSize]();
+    bitmapBloques[0] = 0b00001111;  // Bits 0, 1, 2, 3 = 1
+    
+    bitmapFile.seekp(partStart + bitmapBloquesOffset, ios::beg);
+    bitmapFile.write(bitmapBloques, bitmapBloquesSize);
+    delete[] bitmapBloques;
+    
+    bitmapFile.close();
+    
+    // =====================
+    // ESCRIBIR TABLA DE INODOS
+    // =====================
+    
+    fstream inodeFile(path, ios::binary | ios::in | ios::out);
+    
+    // Inodo 2: raíz (/)
+    Inodo inodoRaiz;
+    memset(&inodoRaiz, 0, sizeof(Inodo));
+    inodoRaiz.i_uid = 1;
+    inodoRaiz.i_gid = 1;
+    inodoRaiz.i_s = blockSize;
+    inodoRaiz.i_atime = time(nullptr);
+    inodoRaiz.i_ctime = time(nullptr);
+    inodoRaiz.i_mtime = time(nullptr);
+    inodoRaiz.i_type = '0';  // 0 = Carpeta
+    inodoRaiz.i_perm[0] = '7';
+    inodoRaiz.i_perm[1] = '7';
+    inodoRaiz.i_perm[2] = '7';
+    inodoRaiz.i_block[0] = 0;  // Apunta al bloque 0
+    for (int i = 1; i < 15; i++) {
+        inodoRaiz.i_block[i] = -1;
     }
     
-    if (!escribirBitmaps(path, bitmapInodosOffset, totalInodos, totalBloques)) {
-        return "Error: No se pudo escribir los bitmaps";
-    }
+    inodeFile.seekp(partStart + inodeTableOffset + (2 * inodeSize), ios::beg);
+    inodeFile.write(reinterpret_cast<const char*>(&inodoRaiz), sizeof(Inodo));
     
-    if (!escribirInodeTable(path, inodeTableOffset, totalInodos)) {
-        return "Error: No se pudo escribir la tabla de inodos";
-    }
+    inodeFile.close();
     
-    if (!crearInodoRaiz(path, inodeTableOffset, blockTableOffset, blockSize)) {
-        return "Error: No se pudo crear el inodo raíz";
-    }
+    // =====================
+    // ESCRIBIR BLOQUES
+    // =====================
     
-    int nextFreeBlock = (blockTableOffset / blockSize) + 1;
-    if (!crearUsersTXT(path, inodeTableOffset, blockTableOffset, blockSize, nextFreeBlock)) {
+    fstream blockFile(path, ios::binary | ios::in | ios::out);
+    
+    // Bloque 0: Carpeta raíz (/) con "." y ".."
+    BloqueCarpeta bloqueRaiz;
+    memset(&bloqueRaiz, 0, sizeof(BloqueCarpeta));
+    
+    strncpy(bloqueRaiz.b_content[0].b_name, ".", 12);
+    bloqueRaiz.b_content[0].b_inodo = 2;
+    
+    strncpy(bloqueRaiz.b_content[1].b_name, "..", 12);
+    bloqueRaiz.b_content[1].b_inodo = 2;
+    
+    blockFile.seekp(partStart + blockTableOffset + (0 * blockSize), ios::beg);
+    blockFile.write(reinterpret_cast<const char*>(&bloqueRaiz), sizeof(BloqueCarpeta));
+    
+    blockFile.close();
+    
+    // =====================
+    // CREAR users.txt (BLOQUE 3)
+    // =====================
+    
+    if (!crearUsersTXT(path, partStart, inodeTableOffset, blockTableOffset, blockSize, 3)) {
         return "Error: No se pudo crear users.txt";
     }
     
-    // Actualizar bitmaps
-    fstream fileUpdate(path, ios::binary | ios::in | ios::out);
-    if (fileUpdate.is_open()) {
-        fileUpdate.seekp(bitmapInodosOffset, ios::beg);
-        char bitmapInodo = 0b00001111;  // Inodos 0, 1, 2, 3 ocupados
-        fileUpdate.write(&bitmapInodo, 1);
-        
-        fileUpdate.seekp(bitmapBloquesOffset, ios::beg);
-        char bitmapBloque = 0b00001111;  // Bloques 0, 1, 2, 3 ocupados
-        fileUpdate.write(&bitmapBloque, 1);
-        
-        fileUpdate.close();
-    }
+    // =====================
+    // RESPUESTA
+    // =====================
     
     ostringstream oss;
     oss << "Partición formateada con EXT2 exitosamente:\n";
@@ -328,12 +299,12 @@ string MKFS::ejecutar(const string& comando) {
     oss << "  Inodos totales: " << totalInodos << "\n";
     oss << "  Bloques totales: " << totalBloques << "\n";
     oss << "  Tamaño de bloque: " << blockSize << " bytes\n";
-    oss << "  SuperBlock: byte " << superBlockOffset << "\n";
-    oss << "  Bitmap Inodos: byte " << bitmapInodosOffset << "\n";
-    oss << "  Bitmap Bloques: byte " << bitmapBloquesOffset << "\n";
-    oss << "  Tabla Inodos: byte " << inodeTableOffset << "\n";
-    oss << "  Tabla Bloques: byte " << blockTableOffset << "\n";
-    oss << "  users.txt: creado en raíz (inodo 3)";
+    oss << "  SuperBlock: byte " << partStart + superBlockOffset << "\n";
+    oss << "  Bitmap Inodos: byte " << partStart + bitmapInodosOffset << "\n";
+    oss << "  Bitmap Bloques: byte " << partStart + bitmapBloquesOffset << "\n";
+    oss << "  Tabla Inodos: byte " << partStart + inodeTableOffset << "\n";
+    oss << "  Tabla Bloques: byte " << partStart + blockTableOffset << "\n";
+    oss << "  users.txt: creado en raíz (inodo 3, bloque 3)";
     
     return oss.str();
 }
